@@ -1,12 +1,30 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import YieldChart from './components/YieldChart';
 import YieldTable from './components/YieldTable';
+import PriceRangeSlider from './components/PriceRangeSlider';
 import { City, PropertyType, FetchStatus, MarketAnalysis, MarketFilters } from './types';
 import { fetchMarketData } from './services/geminiService';
 import { MapPin, Loader2, RefreshCcw, Info, Filter, Home, Building, Bed, Bath, Car } from 'lucide-react';
 
+// Constants for Slider
+const MIN_PRICE_LIMIT = 0;
+const MAX_PRICE_LIMIT = 3000000; // $3M
+const PRICE_STEP = 50000; // $50k increments
+
 const App: React.FC = () => {
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    // Try to get theme from local storage or system preference
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme) return savedTheme === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
   const [activeCity, setActiveCity] = useState<City>(City.MELBOURNE);
   const [propertyType, setPropertyType] = useState<PropertyType>(PropertyType.HOUSE);
   
@@ -19,11 +37,29 @@ const App: React.FC = () => {
   const [marketData, setMarketData] = useState<MarketAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Price Filter (Client-side)
-  const [minPrice, setMinPrice] = useState<string>('');
-  const [maxPrice, setMaxPrice] = useState<string>('');
+  // Price Filter State (Numbers for slider)
+  const [priceRange, setPriceRange] = useState<[number, number]>([MIN_PRICE_LIMIT, MAX_PRICE_LIMIT]);
+  // Debounced price state to prevent API spam while dragging
+  const [debouncedPriceRange, setDebouncedPriceRange] = useState<[number, number]>([MIN_PRICE_LIMIT, MAX_PRICE_LIMIT]);
 
-  const loadData = useCallback(async (city: City, type: PropertyType, filters: MarketFilters) => {
+  // Theme Toggle Logic
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+
+  const loadData = useCallback(async (
+    city: City, 
+    type: PropertyType, 
+    filters: MarketFilters
+  ) => {
     setStatus(FetchStatus.LOADING);
     setError(null);
     try {
@@ -46,39 +82,69 @@ const App: React.FC = () => {
       setBedrooms('2');
       setBathrooms('1');
       setParking('1');
+      setPriceRange([0, 1500000]); // Lower default max for units
+      setDebouncedPriceRange([0, 1500000]);
     } else {
       setBedrooms('3');
       setBathrooms('2');
       setParking('2');
+      setPriceRange([0, 3000000]); // Higher default max for houses
+      setDebouncedPriceRange([0, 3000000]);
     }
   };
 
-  // Reload data when any core filter changes
+  // Debounce Effect: Sync priceRange to debouncedPriceRange after user stops dragging
   useEffect(() => {
-    loadData(activeCity, propertyType, { bedrooms, bathrooms, parking });
-  }, [activeCity, propertyType, bedrooms, bathrooms, parking, loadData]);
+    const timer = setTimeout(() => {
+      setDebouncedPriceRange(priceRange);
+    }, 800); // 800ms delay
 
-  // Client-side filtering for Price Range
-  const filteredData = useMemo(() => {
-    if (!marketData) return [];
-    
-    return marketData.data.filter(item => {
-      const price = item.medianSoldPrice;
-      const min = minPrice ? parseFloat(minPrice) : 0;
-      const max = maxPrice ? parseFloat(maxPrice) : Infinity;
-      return price >= min && price <= max;
+    return () => clearTimeout(timer);
+  }, [priceRange]);
+
+  // Main Data Load Effect
+  useEffect(() => {
+    // Convert slider numbers to filter strings (skip if default bounds to avoid over-constraining prompt)
+    const minStr = debouncedPriceRange[0] > MIN_PRICE_LIMIT ? debouncedPriceRange[0].toString() : '';
+    const maxStr = debouncedPriceRange[1] < MAX_PRICE_LIMIT ? debouncedPriceRange[1].toString() : '';
+
+    loadData(activeCity, propertyType, { 
+      bedrooms, 
+      bathrooms, 
+      parking, 
+      minPrice: minStr, 
+      maxPrice: maxStr 
     });
-  }, [marketData, minPrice, maxPrice]);
+  }, [activeCity, propertyType, bedrooms, bathrooms, parking, debouncedPriceRange, loadData]); 
+
+  const handleRefresh = () => {
+    const minStr = debouncedPriceRange[0] > MIN_PRICE_LIMIT ? debouncedPriceRange[0].toString() : '';
+    const maxStr = debouncedPriceRange[1] < MAX_PRICE_LIMIT ? debouncedPriceRange[1].toString() : '';
+    
+    loadData(activeCity, propertyType, { 
+      bedrooms, 
+      bathrooms, 
+      parking, 
+      minPrice: minStr, 
+      maxPrice: maxStr 
+    });
+  };
+
+  const formatPriceDisplay = (val: number) => {
+    if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
+    if (val >= 1000) return `$${(val / 1000).toFixed(0)}k`;
+    return `$${val}`;
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      <Header />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-200">
+      <Header isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Top Controls: City & Refresh */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <div className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
+          <div className="flex flex-wrap gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm transition-colors duration-200">
             {Object.values(City).map((city) => (
               <button
                 key={city}
@@ -86,19 +152,19 @@ const App: React.FC = () => {
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
                   activeCity === city
                     ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
-                <MapPin className={`w-3.5 h-3.5 ${activeCity === city ? 'text-white' : 'text-slate-400'}`} />
+                <MapPin className={`w-3.5 h-3.5 ${activeCity === city ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
                 {city}
               </button>
             ))}
           </div>
 
           <button
-            onClick={() => loadData(activeCity, propertyType, { bedrooms, bathrooms, parking })}
+            onClick={handleRefresh}
             disabled={status === FetchStatus.LOADING}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
           >
             <RefreshCcw className={`w-4 h-4 ${status === FetchStatus.LOADING ? 'animate-spin' : ''}`} />
             Refresh Estimates
@@ -106,17 +172,17 @@ const App: React.FC = () => {
         </div>
 
         {/* Filter Bar */}
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-8">
-           <div className="flex items-center gap-2 mb-4 text-slate-800 font-semibold border-b border-slate-100 pb-2">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 mb-8 transition-colors duration-200">
+           <div className="flex items-center gap-2 mb-4 text-slate-800 dark:text-slate-200 font-semibold border-b border-slate-100 dark:border-slate-800 pb-2">
               <Filter className="w-4 h-4" />
               <h3>Property Config & Filters</h3>
            </div>
            
-           <div className="flex flex-col lg:flex-row gap-6">
+           <div className="flex flex-col lg:flex-row gap-8 lg:gap-6">
               
               {/* Column 1: Property Type */}
               <div className="flex-1 min-w-[200px]">
-                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Type</label>
+                 <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">Type</label>
                  <div className="flex flex-wrap gap-2">
                     {Object.values(PropertyType).map((type) => (
                        <button
@@ -125,8 +191,8 @@ const App: React.FC = () => {
                           disabled={status === FetchStatus.LOADING}
                           className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
                             propertyType === type 
-                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium ring-1 ring-indigo-200' 
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            ? 'bg-indigo-50 dark:bg-indigo-900/50 border-indigo-200 dark:border-indigo-500/50 text-indigo-700 dark:text-indigo-300 font-medium ring-1 ring-indigo-200 dark:ring-indigo-500/20' 
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                           }`}
                        >
                           {type === PropertyType.HOUSE || type === PropertyType.TOWNHOUSE ? <Home className="inline w-3 h-3 mr-1.5 mb-0.5" /> : <Building className="inline w-3 h-3 mr-1.5 mb-0.5" />}
@@ -138,7 +204,7 @@ const App: React.FC = () => {
 
               {/* Column 2: Features (Bed/Bath/Car) */}
               <div className="flex-1 min-w-[240px]">
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Features</label>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-2">Features</label>
                 <div className="grid grid-cols-3 gap-3">
                   {/* Bedrooms */}
                   <div>
@@ -148,7 +214,7 @@ const App: React.FC = () => {
                         value={bedrooms}
                         onChange={(e) => setBedrooms(e.target.value)}
                         disabled={status === FetchStatus.LOADING}
-                        className="w-full pl-9 pr-2 py-1.5 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer"
+                        className="w-full pl-9 pr-2 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 appearance-none cursor-pointer transition-colors"
                       >
                         <option value="1">1 Bed</option>
                         <option value="2">2 Bed</option>
@@ -167,7 +233,7 @@ const App: React.FC = () => {
                         value={bathrooms}
                         onChange={(e) => setBathrooms(e.target.value)}
                         disabled={status === FetchStatus.LOADING}
-                        className="w-full pl-9 pr-2 py-1.5 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer"
+                        className="w-full pl-9 pr-2 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 appearance-none cursor-pointer transition-colors"
                       >
                          <option value="1">1 Bath</option>
                          <option value="2">2 Bath</option>
@@ -184,7 +250,7 @@ const App: React.FC = () => {
                         value={parking}
                         onChange={(e) => setParking(e.target.value)}
                         disabled={status === FetchStatus.LOADING}
-                        className="w-full pl-9 pr-2 py-1.5 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer"
+                        className="w-full pl-9 pr-2 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 appearance-none cursor-pointer transition-colors"
                       >
                         <option value="0">No Car</option>
                         <option value="1">1 Car</option>
@@ -196,40 +262,37 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Column 3: Price Range */}
-              <div className="flex-1 min-w-[240px]">
-                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Median Price (AUD)</label>
-                 <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                       <span className="absolute left-2.5 top-2 text-slate-400 text-sm">$</span>
-                       <input 
-                          type="number" 
-                          value={minPrice}
-                          onChange={(e) => setMinPrice(e.target.value)}
-                          placeholder="Min"
-                          className="w-full pl-6 pr-2 py-1.5 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                       />
-                    </div>
-                    <span className="text-slate-400">-</span>
-                    <div className="relative flex-1">
-                       <span className="absolute left-2.5 top-2 text-slate-400 text-sm">$</span>
-                       <input 
-                          type="number" 
-                          value={maxPrice}
-                          onChange={(e) => setMaxPrice(e.target.value)}
-                          placeholder="Max"
-                          className="w-full pl-6 pr-2 py-1.5 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                       />
-                    </div>
+              {/* Column 3: Price Range Slider */}
+              <div className="flex-1 min-w-[260px]">
+                 <div className="flex justify-between items-end mb-1">
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Median Price</label>
+                    <span className="text-xs font-mono text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded font-medium">
+                       {formatPriceDisplay(priceRange[0])} - {formatPriceDisplay(priceRange[1])}{priceRange[1] === MAX_PRICE_LIMIT ? '+' : ''}
+                    </span>
+                 </div>
+                 
+                 <PriceRangeSlider 
+                    min={MIN_PRICE_LIMIT} 
+                    max={MAX_PRICE_LIMIT} 
+                    step={PRICE_STEP} 
+                    value={priceRange}
+                    onChange={(vals) => setPriceRange(vals)}
+                 />
+
+                 <div className="flex justify-between text-[10px] text-slate-400 font-medium mt-1">
+                    <span>$0</span>
+                    <span>$1M</span>
+                    <span>$2M</span>
+                    <span>$3M+</span>
                  </div>
               </div>
            </div>
         </div>
 
         {/* Disclaimer Banner */}
-        <div className="mb-8 bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-3 items-start">
-            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-900">
+        <div className="mb-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex gap-3 items-start">
+            <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-900 dark:text-blue-200">
                 <p className="font-semibold">AI-Generated Market Data</p>
                 <p className="mt-1 opacity-90">
                     Due to CORS restrictions on live scraping, this dashboard uses Google's Gemini 2.5 Flash model to generate realistic market estimates for <strong>{bedrooms}-bed, {bathrooms}-bath, {parking}-car {propertyType}s</strong> in {activeCity}.
@@ -240,20 +303,20 @@ const App: React.FC = () => {
         {/* Content Area */}
         {status === FetchStatus.LOADING && (
           <div className="flex flex-col items-center justify-center h-96">
-            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-            <p className="text-slate-500 font-medium animate-pulse">
+            <Loader2 className="w-12 h-12 text-blue-600 dark:text-blue-400 animate-spin mb-4" />
+            <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">
               Analyzing {bedrooms}-bed {propertyType.toLowerCase()} market in {activeCity}...
             </p>
           </div>
         )}
 
         {status === FetchStatus.ERROR && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-            <p className="text-red-800 font-semibold mb-2">Error loading data</p>
-            <p className="text-red-600 text-sm">{error}</p>
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 text-center">
+            <p className="text-red-800 dark:text-red-300 font-semibold mb-2">Error loading data</p>
+            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
             <button 
-                onClick={() => loadData(activeCity, propertyType, { bedrooms, bathrooms, parking })}
-                className="mt-4 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
+                onClick={handleRefresh}
+                className="mt-4 px-4 py-2 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
             >
                 Try Again
             </button>
@@ -263,7 +326,7 @@ const App: React.FC = () => {
         {status === FetchStatus.SUCCESS && marketData && (
           <div className="space-y-6 animate-fade-in">
             {/* Summary Card */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-6 text-white shadow-lg">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 dark:from-blue-700 dark:to-indigo-900 rounded-xl p-6 text-white shadow-lg">
               <div className="flex justify-between items-start">
                  <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -282,21 +345,24 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Empty State for Filtering */}
-            {filteredData.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
-                   <p className="text-slate-500 font-medium">No suburbs found matching your price range.</p>
+            {marketData.data.length === 0 ? (
+                <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 border-dashed transition-colors">
+                   <p className="text-slate-500 dark:text-slate-400 font-medium">No suburbs found matching your search criteria.</p>
                    <button 
-                      onClick={() => { setMinPrice(''); setMaxPrice(''); }}
-                      className="mt-2 text-blue-600 text-sm hover:underline"
+                      onClick={() => { 
+                        const defaultRange: [number, number] = [0, 3000000];
+                        setPriceRange(defaultRange);
+                        setDebouncedPriceRange(defaultRange);
+                      }}
+                      className="mt-2 text-blue-600 dark:text-blue-400 text-sm hover:underline"
                    >
-                      Clear Price Filters
+                      Reset Price Filters
                    </button>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <YieldChart data={filteredData} />
-                  <YieldTable data={filteredData} />
+                  <YieldChart data={marketData.data} isDarkMode={isDarkMode} />
+                  <YieldTable data={marketData.data} />
                 </div>
             )}
           </div>

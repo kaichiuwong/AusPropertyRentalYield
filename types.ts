@@ -19,6 +19,8 @@ export interface MarketFilters {
   bedrooms: string;
   bathrooms: string;
   parking: string;
+  minPrice?: string;
+  maxPrice?: string;
 }
 
 export interface SuburbData {

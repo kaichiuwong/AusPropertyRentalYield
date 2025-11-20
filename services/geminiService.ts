@@ -14,8 +14,18 @@ export const fetchMarketData = async (
 
   const specs = `${filters.bedrooms}-bedroom, ${filters.bathrooms}-bathroom, ${filters.parking}-carspace`;
 
+  // Build price context for the prompt
+  let priceContext = "";
+  if (filters.minPrice && filters.maxPrice) {
+    priceContext = ` with a median sold price between $${filters.minPrice} and $${filters.maxPrice}`;
+  } else if (filters.minPrice) {
+    priceContext = ` with a median sold price above $${filters.minPrice}`;
+  } else if (filters.maxPrice) {
+    priceContext = ` with a median sold price below $${filters.maxPrice}`;
+  }
+
   const prompt = `
-    Generate a realistic real estate market dataset for 15 popular suburbs in ${city}, Australia.
+    Generate a realistic real estate market dataset for 15 popular suburbs in ${city}, Australia${priceContext}.
     
     Focus specifically on market data for: ${propertyType}s (${specs}).
     
