@@ -6,12 +6,43 @@ import YieldTable from './components/YieldTable';
 import PriceRangeSlider from './components/PriceRangeSlider';
 import { City, PropertyType, FetchStatus, MarketAnalysis, MarketFilters } from './types';
 import { fetchMarketData } from './services/geminiService';
-import { MapPin, Loader2, RefreshCcw, Info, Filter, Home, Building, Bed, Bath, Car } from 'lucide-react';
+import { MapPin, Loader2, RefreshCcw, Info, Filter, Home, Building, Bed, Bath, Car, ChevronDown } from 'lucide-react';
 
 // Constants for Slider
 const MIN_PRICE_LIMIT = 0;
 const MAX_PRICE_LIMIT = 3000000; // $3M
 const PRICE_STEP = 50000; // $50k increments
+
+// City Grouping Helper
+const CAPITALS = [
+  City.MELBOURNE, City.SYDNEY, City.BRISBANE, City.PERTH, 
+  City.ADELAIDE, City.HOBART, City.DARWIN, City.CANBERRA
+];
+
+const REGIONAL_QLD = [
+  City.GOLD_COAST, City.SUNSHINE_COAST, City.CAIRNS, 
+  City.TOWNSVILLE, City.TOOWOOMBA, City.ROCKHAMPTON
+];
+
+const REGIONAL_NSW = [
+  City.NEWCASTLE, City.WOLLONGONG, City.TWEED_HEADS, 
+  City.ALBURY, City.WAGGA_WAGGA
+];
+
+const REGIONAL_VIC = [
+  City.GEELONG, City.BALLARAT, City.BENDIGO
+];
+
+const REGIONAL_TAS = [
+  City.LAUNCESTON, City.DEVONPORT
+];
+
+const REGIONAL_GROUPS: { [key: string]: City[] } = {
+  'Queensland': REGIONAL_QLD,
+  'New South Wales': REGIONAL_NSW,
+  'Victoria': REGIONAL_VIC,
+  'Tasmania': REGIONAL_TAS
+};
 
 const App: React.FC = () => {
   // Theme State
@@ -26,6 +57,9 @@ const App: React.FC = () => {
   });
 
   const [activeCity, setActiveCity] = useState<City>(City.MELBOURNE);
+  // Regional Dropdown State
+  const [selectedRegionalState, setSelectedRegionalState] = useState<string>('');
+
   const [propertyType, setPropertyType] = useState<PropertyType>(PropertyType.HOUSE);
   
   // Feature Filters
@@ -136,39 +170,113 @@ const App: React.FC = () => {
     return `$${val}`;
   };
 
+  const handleCapitalClick = (city: City) => {
+    setActiveCity(city);
+    setSelectedRegionalState(''); // Reset regional dropdown when a capital is picked
+  };
+
+  const handleRegionalCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const city = e.target.value as City;
+    if (city) {
+      setActiveCity(city);
+    }
+  };
+
+  const formatCityLabel = (city: string) => {
+    return city.replace(/, (QLD|NSW|VIC|TAS|WA|SA|ACT|NT)/, '');
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-200">
       <Header isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Top Controls: City & Refresh */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <div className="flex flex-wrap gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm transition-colors duration-200">
-            {Object.values(City).map((city) => (
-              <button
-                key={city}
-                onClick={() => setActiveCity(city)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                  activeCity === city
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
+        {/* Top Controls: City Selection */}
+        <div className="flex flex-col gap-4 mb-6">
+           <div className="flex justify-between items-center">
+             <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Select Location</h2>
+             <button
+                onClick={handleRefresh}
+                disabled={status === FetchStatus.LOADING}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
               >
-                <MapPin className={`w-3.5 h-3.5 ${activeCity === city ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
-                {city}
+                <RefreshCcw className={`w-3.5 h-3.5 ${status === FetchStatus.LOADING ? 'animate-spin' : ''}`} />
+                Refresh
               </button>
-            ))}
-          </div>
+           </div>
+           
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 transition-colors duration-200">
+              {/* Capitals */}
+              <div className="mb-4">
+                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase px-1 mb-2 block">Capital Cities</span>
+                 <div className="flex flex-wrap gap-2">
+                    {CAPITALS.map((city) => (
+                       <button
+                         key={city}
+                         onClick={() => handleCapitalClick(city)}
+                         className={`px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2 whitespace-nowrap ${
+                           activeCity === city
+                             ? 'bg-blue-600 text-white shadow-md'
+                             : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                         }`}
+                       >
+                         <MapPin className={`w-3 h-3 ${activeCity === city ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+                         {formatCityLabel(city)}
+                       </button>
+                    ))}
+                 </div>
+              </div>
+              
+              <div className="h-px bg-slate-100 dark:bg-slate-800 my-4" />
 
-          <button
-            onClick={handleRefresh}
-            disabled={status === FetchStatus.LOADING}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
-          >
-            <RefreshCcw className={`w-4 h-4 ${status === FetchStatus.LOADING ? 'animate-spin' : ''}`} />
-            Refresh Estimates
-          </button>
+              {/* Regional Areas Dropdowns */}
+              <div>
+                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase px-1 mb-2 block">Regional Areas</span>
+                 <div className="flex flex-col sm:flex-row gap-4">
+                    
+                    {/* 1. Select State */}
+                    <div className="relative w-full sm:w-64">
+                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                          <ChevronDown className="h-4 w-4" />
+                       </div>
+                       <select
+                          value={selectedRegionalState}
+                          onChange={(e) => setSelectedRegionalState(e.target.value)}
+                          className="block w-full appearance-none rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 py-2 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:placeholder-slate-400 dark:text-white text-slate-900 transition-colors"
+                       >
+                          <option value="">Select State</option>
+                          {Object.keys(REGIONAL_GROUPS).map((state) => (
+                             <option key={state} value={state}>{state}</option>
+                          ))}
+                       </select>
+                    </div>
+
+                    {/* 2. Select City */}
+                    <div className="relative w-full sm:w-64">
+                        <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 ${!selectedRegionalState ? 'text-slate-300 dark:text-slate-600' : 'text-slate-500'}`}>
+                            <ChevronDown className="h-4 w-4" />
+                        </div>
+                        <div className={`pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 ${!selectedRegionalState ? 'text-slate-300 dark:text-slate-600' : 'text-slate-500 dark:text-slate-400'}`}>
+                            <MapPin className="h-4 w-4" />
+                        </div>
+                        <select
+                           value={selectedRegionalState && REGIONAL_GROUPS[selectedRegionalState]?.includes(activeCity) ? activeCity : ''}
+                           onChange={handleRegionalCityChange}
+                           disabled={!selectedRegionalState}
+                           className="block w-full appearance-none rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 py-2 pl-9 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:placeholder-slate-400 dark:text-white text-slate-900 transition-colors disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-400 dark:disabled:text-slate-600 disabled:border-slate-200 dark:disabled:border-slate-800"
+                        >
+                           <option value="">{selectedRegionalState ? 'Select City' : 'Select State First'}</option>
+                           {selectedRegionalState && REGIONAL_GROUPS[selectedRegionalState].map((city) => (
+                              <option key={city} value={city}>
+                                 {formatCityLabel(city)}
+                              </option>
+                           ))}
+                        </select>
+                    </div>
+                 </div>
+              </div>
+           </div>
         </div>
 
         {/* Filter Bar */}
