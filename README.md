@@ -1,20 +1,79 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AusProperty Yield Dashboard
 
-# Run and deploy your AI Studio app
+A real-time rental yield dashboard for Australian suburbs, powered by AI estimates using Google's Gemini API.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1sr0X21laMDbU7-Uvh02xX00m5YLapsUb
+- **AI-Powered Market Data**: Generates realistic market estimates for sold prices and rental yields using the Gemini 2.5 Flash model.
+- **Interactive Visualization**: Visualizes yield data using Recharts.
+- **Comprehensive Filtering**: Filter by City (Capital & Regional), Property Type, Bedrooms, Bathrooms, Parking, and Price Range.
+- **Dark Mode Support**: Fully responsive UI with light and dark themes.
 
-## Run Locally
+## Prerequisites
 
-**Prerequisites:**  Node.js
+Before you begin, ensure you have:
+- Node.js installed (v18 or higher recommended).
+- A Google Gemini API Key (get one from [Google AI Studio](https://aistudio.google.com/)).
 
+## Local Development
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1.  **Install Dependencies**
+    ```bash
+    npm install
+    ```
+
+2.  **Configure Environment Variables**
+    Create a `.env` file in the root directory:
+    ```bash
+    touch .env
+    ```
+    Add your API key:
+    ```env
+    API_KEY=your_google_gemini_api_key_here
+    ```
+
+3.  **Start Development Server**
+    ```bash
+    npm run dev
+    ```
+    The app will run at `http://localhost:5173`.
+
+## Deployment
+
+### Vercel (Recommended)
+
+This project is configured for easy deployment on Vercel.
+
+1.  Push your code to a Git repository (GitHub, GitLab, Bitbucket).
+2.  Log in to [Vercel](https://vercel.com) and click **"Add New Project"**.
+3.  Import your repository.
+4.  In the **"Configure Project"** step:
+    - **Framework Preset**: Vite (should be detected automatically).
+    - **Environment Variables**: Add a new variable:
+        - Key: `API_KEY`
+        - Value: `your_actual_api_key`
+5.  Click **"Deploy"**.
+
+### Manual Build
+
+To build the project for production:
+
+```bash
+npm run build
+```
+
+This generates a `dist` folder containing the static assets, which can be hosted on any static site hosting service (Netlify, GitHub Pages, AWS S3, etc.).
+
+**Note for other platforms**: Ensure you configure the `API_KEY` environment variable in your hosting provider's settings.
+
+## Tech Stack
+
+- **Frontend**: React, TypeScript, Vite
+- **Styling**: Tailwind CSS
+- **AI Integration**: Google GenAI SDK (`@google/genai`)
+- **Icons**: Lucide React
+- **Charts**: Recharts
+
+## Disclaimer
+
+This application uses AI to estimate market data because live scraping of real estate websites is restricted by CORS policies in browser environments. While the AI uses its internal knowledge base to generate realistic figures, this data should be used for demonstration and educational purposes only, not for financial decisions.
